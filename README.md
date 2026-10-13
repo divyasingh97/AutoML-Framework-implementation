@@ -58,6 +58,17 @@ The framework evaluates models using metrics appropriate to the selected problem
 
 The available regression evaluation metrics depend on the implementation in `app.py`. Check the app's displayed results before documenting specific metrics here.
 
+## 📸 Application Screenshot
+
+### Model Comparison
+
+The framework trains and compares multiple machine learning models and identifies the best-performing model according to the selected evaluation metric.
+
+![AutoML Framework model comparison](screenshots/model-comparison.png)
+
+*Example: Logistic Regression was selected as the best model by weighted F1 score for this particular run. Results may vary depending on the dataset and train-test split.*
+
+
 ## 📁 Project Structure
 
 ```text
