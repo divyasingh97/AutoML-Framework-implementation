@@ -1,42 +1,37 @@
 
+from pathlib import Path
 import io
-
 import joblib
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
 
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import (
-    ExtraTreesClassifier,
-    ExtraTreesRegressor,
-    RandomForestClassifier,
-    RandomForestRegressor,
-)
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
     f1_score,
+    confusion_matrix,
+    classification_report,
     mean_absolute_error,
     mean_squared_error,
     r2_score,
-    classification_report,
-    confusion_matrix,
 )
-from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    ExtraTreesClassifier,
+    RandomForestRegressor,
+    ExtraTreesRegressor,
+)
 
-
-# --------------------------------------------------
-# PAGE CONFIGURATION
-# --------------------------------------------------
-
+# ---------------- PAGE SETTINGS ----------------
 st.set_page_config(
     page_title="AutoML Framework",
     page_icon="🤖",
@@ -45,474 +40,373 @@ st.set_page_config(
 
 st.title("🤖 AutoML Framework")
 st.write(
-    "Upload a CSV dataset, choose the target column, "
-    "and automatically train and compare machine learning models."
+    "Automatically train, compare, evaluate, and use machine learning models."
 )
 
 
-# --------------------------------------------------
-# SIDEBAR SETTINGS
-# --------------------------------------------------
+# ---------------- DATASET LOADER ----------------
+def load_demo_dataset():
+    paths = [
+        Path("data/WA_Fn-UseC_-HR-Employee-Attrition.csv"),
+        Path("WA_Fn-UseC_-HR-Employee-Attrition.csv"),
+    ]
 
-with st.sidebar:
-    st.header("⚙️ Configuration")
+    for path in paths:
+        if path.exists():
+            return pd.read_csv(path), str(path)
 
-    task = st.selectbox(
-        "Select problem type",
-        ["Classification", "Regression"],
+    return None, None
+
+
+# ---------------- PREPROCESSING ----------------
+def make_preprocessor(X):
+    numeric_columns = X.select_dtypes(include=np.number).columns.tolist()
+    categorical_columns = [
+        col for col in X.columns if col not in numeric_columns
+    ]
+
+    transformers = []
+
+    if numeric_columns:
+        numeric_pipeline = Pipeline([
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ])
+        transformers.append(
+            ("numeric", numeric_pipeline, numeric_columns)
+        )
+
+    if categorical_columns:
+        categorical_pipeline = Pipeline([
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore")),
+        ])
+        transformers.append(
+            ("categorical", categorical_pipeline, categorical_columns)
+        )
+
+    return ColumnTransformer(transformers=transformers)
+
+
+# ---------------- MACHINE LEARNING MODELS ----------------
+def get_models(task):
+    if task == "Classification":
+        return {
+            "Logistic Regression": LogisticRegression(max_iter=2000),
+            "Decision Tree": DecisionTreeClassifier(random_state=42),
+            "Random Forest": RandomForestClassifier(
+                n_estimators=100, random_state=42, n_jobs=-1
+            ),
+            "Extra Trees": ExtraTreesClassifier(
+                n_estimators=100, random_state=42, n_jobs=-1
+            ),
+        }
+
+    return {
+        "Linear Regression": LinearRegression(),
+        "Decision Tree Regressor": DecisionTreeRegressor(random_state=42),
+        "Random Forest Regressor": RandomForestRegressor(
+            n_estimators=100, random_state=42, n_jobs=-1
+        ),
+        "Extra Trees Regressor": ExtraTreesRegressor(
+            n_estimators=100, random_state=42, n_jobs=-1
+        ),
+    }
+
+
+# ---------------- TRAIN AND COMPARE ----------------
+def train_models(X, y, task, test_size):
+    stratify_values = None
+
+    if task == "Classification":
+        counts = y.value_counts()
+        if len(counts) > 1 and counts.min() >= 2:
+            stratify_values = y
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X,
+        y,
+        test_size=test_size,
+        random_state=42,
+        stratify=stratify_values,
     )
 
-# --------------------------------------------------
-# SIDEBAR SETTINGS
-# --------------------------------------------------
+    results = []
+    fitted_models = {}
+    predictions = {}
+
+    for model_name, estimator in get_models(task).items():
+        pipeline = Pipeline([
+            ("preprocessor", make_preprocessor(X_train)),
+            ("model", estimator),
+        ])
+
+        pipeline.fit(X_train, y_train)
+        predicted = pipeline.predict(X_test)
+
+        fitted_models[model_name] = pipeline
+        predictions[model_name] = predicted
+
+        if task == "Classification":
+            results.append({
+                "Model": model_name,
+                "Accuracy": accuracy_score(y_test, predicted),
+                "Precision (weighted)": precision_score(
+                    y_test, predicted,
+                    average="weighted",
+                    zero_division=0,
+                ),
+                "Recall (weighted)": recall_score(
+                    y_test, predicted,
+                    average="weighted",
+                    zero_division=0,
+                ),
+                "F1 Score (weighted)": f1_score(
+                    y_test, predicted,
+                    average="weighted",
+                    zero_division=0,
+                ),
+            })
+        else:
+            results.append({
+                "Model": model_name,
+                "MAE": mean_absolute_error(y_test, predicted),
+                "RMSE": np.sqrt(
+                    mean_squared_error(y_test, predicted)
+                ),
+                "R² Score": r2_score(y_test, predicted),
+            })
+
+    results_df = pd.DataFrame(results)
+
+    if task == "Classification":
+        results_df = results_df.sort_values(
+            "F1 Score (weighted)", ascending=False
+        ).reset_index(drop=True)
+    else:
+        results_df = results_df.sort_values(
+            "RMSE", ascending=True
+        ).reset_index(drop=True)
+
+    best_name = results_df.iloc[0]["Model"]
+
+    predictions_df = pd.DataFrame({
+        "Actual": np.asarray(y_test),
+        "Predicted": np.asarray(predictions[best_name]),
+    })
+
+    numeric_columns = X.select_dtypes(
+        include=np.number
+    ).columns.tolist()
+
+    return {
+        "results_df": results_df,
+        "fitted_models": fitted_models,
+        "best_name": best_name,
+        "predictions_df": predictions_df,
+        "X_test": X_test,
+        "y_test": y_test,
+        "input_columns": X.columns.tolist(),
+        "numeric_columns": numeric_columns,
+        "training_X": X,
+    }
 
 
+# ---------------- SIDEBAR SETTINGS ----------------
 with st.sidebar:
-    st.header("⚙️ Configuration")
+    st.header("⚙️ Settings")
 
-    dataset_mode = st.selectbox(
+    dataset_mode = st.radio(
         "Choose dataset source",
-        [
-            "Upload Your Own CSV",
-            "IBM HR Analytics Demo",
-        ],
-        key="dataset_mode_selectbox",
+        ["Demo dataset", "Upload CSV"],
     )
 
     task = st.selectbox(
-        "Select problem type",
+        "Choose task",
         ["Classification", "Regression"],
-        key="task_selectbox",
     )
 
-    test_size = st.slider(
+    test_percentage = st.slider(
         "Test data percentage",
         min_value=10,
         max_value=40,
         value=20,
         step=5,
-        key="test_size_slider",
     )
 
-# --------------------------------------------------
-# UPLOAD DATASET
-# --------------------------------------------------
 
-uploaded_file = st.file_uploader(
-    "Upload your CSV dataset",
-    type=["csv"],
-)
+# ---------------- LOAD DATA ----------------
+df = None
+dataset_label = ""
 
-if uploaded_file is None:
-    st.info("Upload a CSV file to get started.")
-    st.stop()
+if dataset_mode == "Demo dataset":
+    df, dataset_label = load_demo_dataset()
 
-try:
-    df = pd.read_csv(uploaded_file)
-except Exception as error:
-    st.error(f"Could not read the CSV file: {error}")
-    st.stop()
-
-if df.empty or len(df.columns) < 2:
-    st.error(
-        "Your dataset must contain at least one row "
-        "and two columns."
+    if df is None:
+        st.warning(
+            "Demo dataset not found. Place the IBM HR CSV inside "
+            "the data folder, or select Upload CSV."
+        )
+        st.code(
+            "AutoML-Framework/\n"
+            "├── app.py\n"
+            "└── data/\n"
+            "    └── WA_Fn-UseC_-HR-Employee-Attrition.csv"
+        )
+else:
+    uploaded_file = st.file_uploader(
+        "Upload a CSV dataset",
+        type=["csv"],
     )
+
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            dataset_label = uploaded_file.name
+        except Exception as exc:
+            st.error(f"Could not read CSV: {exc}")
+
+if df is None:
+    if dataset_mode == "Upload CSV":
+        st.info("Upload a CSV file to begin.")
     st.stop()
 
-# Remove completely empty rows and columns.
-df = df.dropna(how="all").dropna(axis=1, how="all")
-
-if df.empty or len(df.columns) < 2:
-    st.error("The dataset does not contain enough usable data.")
+if df.empty:
+    st.error("The dataset is empty.")
     st.stop()
 
-st.subheader("📊 Dataset Preview")
 
-st.dataframe(
-    df.head(10),
-    use_container_width=True,
+# ---------------- DATA PREVIEW ----------------
+st.subheader("📄 Dataset Preview")
+st.caption(
+    f"Dataset: {dataset_label} | "
+    f"{df.shape[0]} rows | {df.shape[1]} columns"
 )
+st.dataframe(df.head(10), use_container_width=True)
 
 col1, col2, col3 = st.columns(3)
+col1.metric("Rows", f"{df.shape[0]:,}")
+col2.metric("Columns", f"{df.shape[1]:,}")
+col3.metric("Missing values", f"{int(df.isna().sum().sum()):,}")
 
-col1.metric("Total Rows", f"{len(df):,}")
-col2.metric("Total Columns", f"{len(df.columns):,}")
-col3.metric(
-    "Missing Values",
-    f"{int(df.isna().sum().sum()):,}",
+
+# ---------------- SELECT TARGET ----------------
+st.subheader("🎯 Select Target Column")
+
+default_index = (
+    df.columns.get_loc("Attrition")
+    if "Attrition" in df.columns
+    else len(df.columns) - 1
 )
-
-
-# --------------------------------------------------
-# SELECT TARGET COLUMN
-# --------------------------------------------------
 
 target = st.selectbox(
     "Choose the target column to predict",
-    options=list(df.columns),
+    options=df.columns.tolist(),
+    index=default_index,
 )
 
-data = df.dropna(subset=[target]).copy()
-
-if len(data) < 5:
-    st.error("At least five usable rows are required.")
-    st.stop()
-
-X = data.drop(columns=[target])
-y = data[target]
-
-if X.shape[1] == 0:
-    st.error("Your dataset needs feature columns besides the target.")
-    st.stop()
-
-# Prepare the target.
-if task == "Classification":
-    y = y.astype(str)
-
-    if y.nunique() < 2:
-        st.error(
-            "Classification requires at least two different target classes."
-        )
-        st.stop()
-
-    if y.nunique() > 50:
-        st.warning(
-            "The target has more than 50 classes. "
-            "Check whether Classification is appropriate."
-        )
-
-else:
-    y = pd.to_numeric(y, errors="coerce")
-
-    valid_rows = y.notna()
-    X = X.loc[valid_rows]
-    y = y.loc[valid_rows]
-
-    if len(y) < 5:
-        st.error(
-            "Regression requires at least five rows "
-            "with numeric target values."
-        )
-        st.stop()
-
-# Reset indexes to keep features and targets aligned.
-X = X.reset_index(drop=True)
-y = y.reset_index(drop=True)
-
-# Remove columns that contain no feature values.
-X = X.dropna(axis=1, how="all")
-
-if X.shape[1] == 0:
-    st.error("No usable feature columns remain.")
-    st.stop()
-
-# Remove unsupported complex values and infinity from numeric columns.
-for column in X.select_dtypes(include=["number"]).columns:
-    X[column] = X[column].replace([np.inf, -np.inf], np.nan)
-
-# Identify numeric and categorical features.
-numeric_columns = X.select_dtypes(
-    include=["number"]
-).columns.tolist()
-
-categorical_columns = X.select_dtypes(
-    exclude=["number"]
-).columns.tolist()
-
-
-# --------------------------------------------------
-# AUTOMATIC PREPROCESSING
-# --------------------------------------------------
-
-transformers = []
-
-if numeric_columns:
-    numeric_pipeline = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-        ]
-    )
-
-    transformers.append(
-        ("numeric", numeric_pipeline, numeric_columns)
-    )
-
-if categorical_columns:
-    categorical_pipeline = Pipeline(
-        steps=[
-            (
-                "imputer",
-                SimpleImputer(strategy="most_frequent"),
-            ),
-            (
-                "encoder",
-                OneHotEncoder(handle_unknown="ignore"),
-            ),
-        ]
-    )
-
-    transformers.append(
-        ("categorical", categorical_pipeline, categorical_columns)
-    )
-
-preprocessor = ColumnTransformer(
-    transformers=transformers,
-    remainder="drop",
-)
-
-
-# --------------------------------------------------
-# SELECT MACHINE LEARNING MODELS
-# --------------------------------------------------
-
-if task == "Classification":
-    models = {
-        "Logistic Regression": LogisticRegression(
-            max_iter=2000,
-            random_state=42,
-        ),
-        "Decision Tree": DecisionTreeClassifier(
-            random_state=42,
-        ),
-        "Random Forest": RandomForestClassifier(
-            n_estimators=100,
-            random_state=42,
-        ),
-        "Extra Trees": ExtraTreesClassifier(
-            n_estimators=100,
-            random_state=42,
-        ),
-    }
-
-else:
-    models = {
-        "Linear Regression": LinearRegression(),
-        "Decision Tree": DecisionTreeRegressor(
-            random_state=42,
-        ),
-        "Random Forest": RandomForestRegressor(
-            n_estimators=100,
-            random_state=42,
-        ),
-        "Extra Trees": ExtraTreesRegressor(
-            n_estimators=100,
-            random_state=42,
-        ),
-    }
-
-
-# --------------------------------------------------
-# TRAIN AND COMPARE MODELS
-# --------------------------------------------------
-
-st.subheader("🧠 Train and Compare Models")
-
-if st.button("🚀 Train Models", type="primary"):
-
-    try:
-        # Stratification helps preserve class proportions when possible.
-        stratify = None
-
-        if task == "Classification":
-            class_counts = y.value_counts()
-
-            if (
-                y.nunique() >= 2
-                and class_counts.min() >= 2
-                and int(np.ceil(len(y) * test_size / 100))
-                >= y.nunique()
-            ):
-                stratify = y
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y,
-            test_size=test_size / 100,
-            random_state=42,
-            stratify=stratify,
-        )
-
-        results = []
-        fitted_models = {}
-        predictions_by_model = {}
-
-        progress = st.progress(0)
-        status = st.empty()
-
-        for index, (name, model) in enumerate(models.items()):
-
-            status.write(f"Training {name}...")
-
-            pipeline = Pipeline(
-                steps=[
-                    ("preprocessor", preprocessor),
-                    ("model", model),
-                ]
-            )
-
-            pipeline.fit(X_train, y_train)
-
-            # Predict with this specific model.
-            model_predictions = pipeline.predict(X_test)
-
-            fitted_models[name] = pipeline
-            predictions_by_model[name] = model_predictions
-
-            # Evaluate classification models.
-            if task == "Classification":
-
-                accuracy = accuracy_score(
-                    y_test,
-                    model_predictions,
-                )
-
-                precision = precision_score(
-                    y_test,
-                    model_predictions,
-                    average="weighted",
-                    zero_division=0,
-                )
-
-                recall = recall_score(
-                    y_test,
-                    model_predictions,
-                    average="weighted",
-                    zero_division=0,
-                )
-
-                f1 = f1_score(
-                    y_test,
-                    model_predictions,
-                    average="weighted",
-                    zero_division=0,
-                )
-
-                results.append(
-                    {
-                        "Model": name,
-                        "Accuracy": accuracy,
-                        "Precision (weighted)": precision,
-                        "Recall (weighted)": recall,
-                        "F1 Score (weighted)": f1,
-                    }
-                )
-
-            # Evaluate regression models.
-            else:
-                mae = mean_absolute_error(
-                    y_test,
-                    model_predictions,
-                )
-
-                mse = mean_squared_error(
-                    y_test,
-                    model_predictions,
-                )
-
-                rmse = float(np.sqrt(mse))
-
-                r2 = (
-                    r2_score(y_test, model_predictions)
-                    if len(y_test) >= 2
-                    else np.nan
-                )
-
-                results.append(
-                    {
-                        "Model": name,
-                        "MAE": mae,
-                        "RMSE": rmse,
-                        "R2 Score": r2,
-                    }
-                )
-
-            progress.progress(
-                (index + 1) / len(models)
-            )
-
-        results_df = pd.DataFrame(results)
-
-        # Select the best model using a suitable metric.
-        if task == "Classification":
-            ranking_metric = "F1 Score (weighted)"
-
-            results_df = results_df.sort_values(
-                ranking_metric,
-                ascending=False,
-            )
-
-        else:
-            ranking_metric = "RMSE"
-
-            results_df = results_df.sort_values(
-                ranking_metric,
-                ascending=True,
-            )
-
-        best_name = results_df.iloc[0]["Model"]
-
-        # IMPORTANT: Save the best model's predictions,
-        # not the predictions from the last loop iteration.
-        best_predictions = predictions_by_model[best_name]
-
-        predictions_df = pd.DataFrame(
-            {
-                "Actual": y_test.to_numpy(),
-                "Predicted": best_predictions,
-            }
-        )
-
-        # Save results for Streamlit reruns.
-        st.session_state["results_df"] = results_df
-        st.session_state["fitted_models"] = fitted_models
-        st.session_state["best_name"] = best_name
-        st.session_state["predictions_df"] = predictions_df
-        st.session_state["y_test"] = y_test
-        st.session_state["X_test"] = X_test
-        st.session_state["task"] = task
-        st.session_state["target"] = target
-        st.session_state["signature"] = (
-            tuple(df.columns),
-            target,
-            task,
-            test_size,
-            len(df),
-        )
-
-        status.success("All models trained successfully!")
-
-    except Exception as error:
-        st.error(f"Training failed: {error}")
-
-
-# --------------------------------------------------
-# DISPLAY RESULTS
-# --------------------------------------------------
-
-current_signature = (
+signature = (
+    dataset_mode,
+    dataset_label,
     tuple(df.columns),
     target,
     task,
-    test_size,
+    test_percentage,
     len(df),
 )
 
+# ---------------- TRAIN BUTTON ----------------
+if st.button("🚀 Train Models", type="primary"):
+    try:
+        if df.shape[1] < 2:
+            raise ValueError(
+                "The dataset needs at least one feature and one target."
+            )
+
+        with st.spinner("Training models. Please wait..."):
+            working_df = df.dropna(subset=[target]).copy()
+
+            X = working_df.drop(columns=[target])
+            y = working_df[target]
+
+            # Remove completely empty feature columns.
+            empty_columns = [
+                col for col in X.columns if X[col].isna().all()
+            ]
+            if empty_columns:
+                X = X.drop(columns=empty_columns)
+
+            if X.shape[1] == 0:
+                raise ValueError("No usable feature columns were found.")
+
+            if task == "Classification":
+                if y.nunique() < 2:
+                    raise ValueError(
+                        "The target must contain at least two classes."
+                    )
+                y = y.astype(str)
+            else:
+                y = pd.to_numeric(y, errors="coerce")
+                valid = y.notna()
+                X = X.loc[valid]
+                y = y.loc[valid]
+
+                if len(y) < 2:
+                    raise ValueError(
+                        "Regression needs at least two numeric target values."
+                    )
+
+            trained = train_models(
+                X,
+                y,
+                task,
+                test_percentage / 100,
+            )
+
+            # Save results so they remain available after Streamlit reruns.
+            st.session_state["trained_results"] = trained
+            st.session_state["trained_signature"] = signature
+
+    except Exception as exc:
+        st.session_state.pop("trained_results", None)
+        st.session_state.pop("trained_signature", None)
+        st.error(f"Training failed: {exc}")
+
+
+# ============================================================
+# DISPLAY RESULTS AND PREDICTION FORM
+# Keep the entire section inside this condition.
+# ============================================================
 if (
-    "results_df" in st.session_state
-    and st.session_state.get("signature") == current_signature
+    "trained_results" in st.session_state
+    and st.session_state.get("trained_signature") == signature
 ):
+    trained = st.session_state["trained_results"]
 
-    results_df = st.session_state["results_df"]
-    fitted_models = st.session_state["fitted_models"]
-    best_name = st.session_state["best_name"]
-    predictions_df = st.session_state["predictions_df"]
+    results_df = trained["results_df"]
+    fitted_models = trained["fitted_models"]
+    best_name = trained["best_name"]
+    predictions_df = trained["predictions_df"]
+    X_test = trained["X_test"]
+    y_test = trained["y_test"]
+    input_columns = trained["input_columns"]
+    numeric_columns = trained["numeric_columns"]
+    training_X = trained["training_X"]
+    best_pipeline = fitted_models[best_name]
 
+    st.success("All models trained successfully!")
+
+    # ---------------- MODEL COMPARISON ----------------
     st.subheader("🏆 Model Comparison")
 
+    numeric_metrics = results_df.select_dtypes(
+        include=np.number
+    ).columns.tolist()
+
     st.dataframe(
-        results_df.round(4),
+        results_df.style.format({
+            col: "{:.4f}" for col in numeric_metrics
+        }),
         use_container_width=True,
         hide_index=True,
     )
@@ -521,145 +415,191 @@ if (
         st.success(
             f"Best model by weighted F1 score: {best_name}"
         )
-    #python
-    # Confusion matrix and classification report
+        chart_metric = "F1 Score (weighted)"
+    else:
+        st.success(f"Best model by lowest RMSE: {best_name}")
+        chart_metric = "RMSE"
+
+    # ---------------- PERFORMANCE CHART ----------------
+    st.subheader("📊 Model Performance Chart")
+    st.bar_chart(
+        results_df.set_index("Model")[[chart_metric]]
+    )
+
+    # ---------------- EVALUATION ----------------
     if task == "Classification":
-        st.subheader("🔍 Confusion Matrix")
+        st.subheader("🔵 Confusion Matrix")
 
-        y_test = st.session_state["y_test"]
-        X_test = st.session_state["X_test"]
+        actual = pd.Series(y_test).astype(str)
+        predicted = pd.Series(
+            best_pipeline.predict(X_test)
+        ).astype(str)
 
-        best_pipeline = fitted_models[best_name]
-        best_predictions = best_pipeline.predict(X_test)
-
-        labels = best_pipeline.named_steps["model"].classes_
-
-        cm = confusion_matrix(
-            y_test,
-            best_predictions,
-            labels=labels,
+        labels = sorted(actual.unique().tolist())
+        matrix = confusion_matrix(
+            actual, predicted, labels=labels
         )
 
-        cm_df = pd.DataFrame(
-            cm,
+        matrix_df = pd.DataFrame(
+            matrix,
             index=[f"Actual: {label}" for label in labels],
             columns=[f"Predicted: {label}" for label in labels],
         )
 
-        st.dataframe(cm_df, use_container_width=True)
+        st.dataframe(matrix_df, use_container_width=True)
 
-        st.subheader("📋 Classification Report")
+        with st.expander("View Classification Report"):
+            report = classification_report(
+                y_test,
+                best_pipeline.predict(X_test),
+                zero_division=0,
+                output_dict=True,
+            )
+            st.dataframe(
+                pd.DataFrame(report).transpose(),
+                use_container_width=True,
+            )
 
-        report = classification_report(
-            y_test,
-            best_predictions,
-            labels=labels,
-            output_dict=True,
-            zero_division=0,
-        )
-
-        report_df = pd.DataFrame(report).transpose()
-        st.dataframe(
-            report_df.round(3),
-            use_container_width=True,
-        )
-
-    else:
-        st.success(
-            f"Best model by lowest RMSE: {best_name}"
-        )
-
-    # Display a warning if all scores are zero.
-    metric_columns = [
-        column
-        for column in results_df.columns
-        if column != "Model"
-    ]
-
-    if (
-        task == "Classification"
-        and (results_df[metric_columns] == 0).all().all()
-    ):
-        st.warning(
-            "All classification metrics are zero. "
-            "Check your dataset, target column, and predictions."
-        )
-
-    # Performance chart.
-    st.subheader("📈 Model Performance")
-
-    selected_metric = st.selectbox(
-        "Choose a metric to visualize",
-        metric_columns,
-    )
-
-    ascending = selected_metric in ["RMSE", "MAE"]
-
-    chart_data = results_df.sort_values(
-        selected_metric,
-        ascending=ascending,
-        na_position="last",
-    )
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-
-    ax.bar(
-        chart_data["Model"],
-        chart_data[selected_metric],
-    )
-
-    ax.set_title(f"Model Comparison — {selected_metric}")
-    ax.set_ylabel(selected_metric)
-    ax.tick_params(axis="x", rotation=20)
-
-    fig.tight_layout()
-    st.pyplot(fig)
-    plt.close(fig)
-
-    # Display test predictions from the best model.
-    st.subheader("🔮 Test Predictions")
-
-    st.dataframe(
-        predictions_df,
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    # Download the best trained model.
-    model_bytes = io.BytesIO()
-
-    joblib.dump(
-        fitted_models[best_name],
-        model_bytes,
-    )
+    # ---------------- DOWNLOADS ----------------
+    st.subheader("📥 Download Results")
 
     st.download_button(
-        label="⬇️ Download Best Model",
-        data=model_bytes.getvalue(),
+        "Download best-model predictions (CSV)",
+        data=predictions_df.to_csv(index=False).encode("utf-8"),
+        file_name="automl_predictions.csv",
+        mime="text/csv",
+    )
+
+    model_buffer = io.BytesIO()
+    joblib.dump(best_pipeline, model_buffer)
+
+    st.download_button(
+        "Download best trained model",
+        data=model_buffer.getvalue(),
         file_name="best_automl_model.joblib",
         mime="application/octet-stream",
     )
 
-    # Download predictions.
-    csv_bytes = predictions_df.to_csv(
-        index=False
-    ).encode("utf-8")
+    # ========================================================
+    # PREDICT ON NEW DATA
+    # This is deliberately inside the results condition.
+    # ========================================================
+    st.divider()
+    st.subheader("🧪 Predict on New Data")
 
-    st.download_button(
-        label="⬇️ Download Test Predictions",
-        data=csv_bytes,
-        file_name="test_predictions.csv",
-        mime="text/csv",
+    st.write(
+        "Enter values for a new record. The best trained model "
+        "will use these values to make a prediction."
     )
+    st.caption(f"Using best model: {best_name}")
 
+    with st.form("new_record_prediction_form"):
+        new_record = {}
+        form_columns = st.columns(2)
 
-# --------------------------------------------------
-# FOOTER
-# --------------------------------------------------
+        for index, column in enumerate(input_columns):
+            with form_columns[index % 2]:
 
-st.divider()
+                if column in numeric_columns:
+                    median_value = pd.to_numeric(
+                        training_X[column], errors="coerce"
+                    ).median()
 
-st.caption(
-    "AutoML Framework | Built with Streamlit, Pandas, "
-    "NumPy and Scikit-learn | Educational project"
-)
+                    if (
+                        pd.isna(median_value)
+                        or not np.isfinite(median_value)
+                    ):
+                        median_value = 0.0
+
+                    new_record[column] = st.number_input(
+                        column,
+                        value=float(median_value),
+                        key=f"new_record_{column}",
+                    )
+
+                else:
+                    choices = (
+                        training_X[column]
+                        .dropna()
+                        .astype(str)
+                        .unique()
+                        .tolist()
+                    )
+
+                    if not choices:
+                        choices = ["Unknown"]
+
+                    new_record[column] = st.selectbox(
+                        column,
+                        options=choices,
+                        key=f"new_record_{column}",
+                    )
+
+        predict_clicked = st.form_submit_button(
+            "🔮 Predict",
+            type="primary",
+        )
+
+    # ---------------- MAKE PREDICTION ----------------
+    if predict_clicked:
+        try:
+            new_data = pd.DataFrame(
+                [new_record],
+                columns=input_columns,
+            )
+
+            for column in numeric_columns:
+                new_data[column] = pd.to_numeric(
+                    new_data[column], errors="coerce"
+                )
+
+            prediction = best_pipeline.predict(new_data)
+
+            st.success("Prediction completed successfully!")
+            st.subheader("Prediction Result")
+            st.write(f"**Selected Model:** {best_name}")
+            st.write(f"**Predicted Value:** {prediction[0]}")
+
+            if (
+                task == "Classification"
+                and hasattr(best_pipeline, "predict_proba")
+            ):
+                probabilities = best_pipeline.predict_proba(new_data)[0]
+                classes = best_pipeline.named_steps["model"].classes_
+
+                probability_df = pd.DataFrame({
+                    "Class": classes.astype(str),
+                    "Probability": probabilities,
+                }).sort_values(
+                    "Probability", ascending=False
+                )
+
+                st.write("**Class probabilities**")
+                st.dataframe(
+                    probability_df.style.format({
+                        "Probability": "{:.2%}"
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+            prediction_csv = pd.DataFrame({
+                "Predicted Value": [str(prediction[0])]
+            }).to_csv(index=False).encode("utf-8")
+
+            st.download_button(
+                "Download this prediction (CSV)",
+                data=prediction_csv,
+                file_name="new_record_prediction.csv",
+                mime="text/csv",
+                key="download_new_prediction",
+            )
+
+        except Exception as exc:
+            st.error(f"Prediction failed: {exc}")
+
+else:
+    st.info(
+        "Choose your target column and click Train Models to display "
+        "the model comparison and new-record prediction form."
+    )
