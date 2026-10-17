@@ -1,21 +1,21 @@
 # AutoML Framework 🤖
 
-An interactive **Automated Machine Learning (AutoML) Framework** built with Python and Streamlit that simplifies the process of training, comparing, and evaluating machine learning models without requiring users to write model-training code manually.
+An interactive **Automated Machine Learning (AutoML) Framework** built with Python and Streamlit. It simplifies the process of training, comparing, and evaluating machine learning models through a user-friendly web interface.
 
-The application supports classification and regression tasks, automatic preprocessing, model comparison, performance visualization, and predictions through a user-friendly web interface.
+The application supports classification and regression tasks, automatic preprocessing, model comparison, performance visualization, and predictions on new records.
 
 ## 🚀 Features
 
-- **Upload your own dataset:** Upload CSV files to train machine learning models on your data.
+- **Upload your own dataset:** Upload CSV files and train models on your data.
 - **Demo dataset:** Explore the framework using the IBM HR Analytics Employee Attrition dataset.
-- **Classification and regression:** Choose the problem type that matches your dataset.
-- **Automatic preprocessing:** Handles numerical and categorical features using appropriate preprocessing pipelines.
+- **Classification and regression:** Choose the appropriate machine learning task.
+- **Automatic preprocessing:** Handle numerical and categorical features using preprocessing pipelines.
 - **Multiple ML models:** Train and compare several machine learning algorithms.
-- **Model evaluation:** View performance metrics and compare model results.
+- **Model evaluation:** View metrics and compare model performance.
 - **Visualizations:** Explore evaluation charts, confusion matrices, and classification reports.
-- **Predictions:** View test-set predictions and make predictions for new records.
+- **Predictions:** View test-set predictions and predict outcomes for new records.
 - **Download results:** Export predictions and the trained model.
-- **Interactive interface:** Configure model training through Streamlit.
+- **Interactive interface:** Configure training through Streamlit.
 
 ## 🛠️ Technologies Used
 
@@ -44,44 +44,59 @@ The application supports classification and regression tasks, automatic preproce
 
 ## 📊 Model Evaluation
 
-The framework evaluates models using metrics appropriate to the selected problem.
-
-**Classification metrics**
+### Classification metrics
 - Accuracy
-- Precision
-- Recall
-- F1-score
+- Weighted precision
+- Weighted recall
+- Weighted F1-score
 - Confusion matrix
 - Classification report
 
-**Regression metrics**
+### Regression metrics
+- Mean Absolute Error (MAE)
+- Root Mean Squared Error (RMSE)
+- R² score
 
-The available regression evaluation metrics depend on the implementation in `app.py`. Check the app's displayed results before documenting specific metrics here.
+## 📸 Application Screenshots
 
-## 📸 Application Screenshot
+### 1. Model Comparison
 
-### Model Comparison
+The framework compares multiple machine learning models and identifies the best-performing model based on the selected evaluation metric.
 
-The framework trains and compares multiple machine learning models and identifies the best-performing model according to the selected evaluation metric.
+![Model Comparison](screenshots/model-comparison.png)
 
-![AutoML Framework model comparison](screenshots/model-comparison.png)
+### 2. Model Evaluation
 
-*Example: Logistic Regression was selected as the best model by weighted F1 score for this particular run. Results may vary depending on the dataset and train-test split.*
+The confusion matrix and classification report help evaluate model performance across the target classes.
 
+![Model Evaluation](screenshots/evaluation.png)
+
+### 3. Prediction Result
+
+The application uses the selected trained model to predict an outcome for a new employee record.
+
+![Prediction Result](screenshots/prediction_result.png)
+
+*Note: Model results depend on the dataset, selected target, and train-test split.*
 
 ## 📁 Project Structure
 
 ```text
 AutoML-Framework-implementation/
-│
 ├── app.py
+├── data/
+│   └── WA_Fn-UseC_-HR-Employee-Attrition.csv  (local demo data)
+├── screenshots/
+│   ├── model-comparison.png
+│   ├── evaluation.png
+│   └── prediction_result.png
 ├── sample_data.csv
 ├── requirements.txt
 ├── README.md
 └── .gitignore
 ```
 
-The IBM HR Analytics dataset is stored locally in the `data/` directory and excluded from GitHub.
+The IBM HR Analytics dataset is stored locally and excluded from GitHub. Obtain the dataset separately if you want to use the demo dataset.
 
 ## ⚙️ Installation and Setup
 
@@ -105,15 +120,15 @@ python -m venv .venv
 
 ### 4. Activate the virtual environment
 
-For Windows Git Bash:
+**Windows Git Bash:**
 
 ```bash
 source .venv/Scripts/activate
 ```
 
-For Windows Command Prompt:
+**Windows Command Prompt:**
 
-```bash
+```bat
 .venv\Scripts\activate
 ```
 
@@ -129,39 +144,35 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Streamlit will provide a local URL, usually:
+Open the local URL displayed in your terminal, usually `http://localhost:8501`.
 
-```text
-http://localhost:8501
-```
-
-Open the URL in your browser to use the application.
-
-## 📂 Using the Framework
+## 📂 How to Use
 
 1. Launch the Streamlit application.
 2. Select the dataset source.
-3. Upload a CSV file or select the supported demo dataset.
+3. Upload a CSV file or select the demo dataset.
 4. Choose classification or regression.
 5. Select the test-data percentage.
-6. Train and compare the available models.
-7. Review the evaluation metrics and visualizations.
-8. Explore predictions and download available results.
+6. Choose the target column.
+7. Train and compare the available models.
+8. Review evaluation metrics and visualizations.
+9. Enter new record details to generate a prediction.
+10. Download available predictions or the trained model.
 
-**Dataset note:** The demo uses the IBM HR Analytics Employee Attrition dataset. To use that demo on another computer, obtain the dataset separately and place `WA_Fn-UseC_-HR-Employee-Attrition.csv` inside the `data/` directory. Alternatively, upload your own suitable CSV dataset.
+**Demo dataset:** The demo uses the IBM HR Analytics Employee Attrition dataset. To use it locally, place `WA_Fn-UseC_-HR-Employee-Attrition.csv` in the `data/` directory. You can also upload a suitable CSV file.
 
 ## 🎯 Project Objective
 
-The objective of this project is to make machine learning experimentation more accessible by bringing dataset input, preprocessing, model training, evaluation, and prediction into one interactive application.
+The objective is to make machine learning experimentation more accessible by bringing data input, preprocessing, model training, evaluation, comparison, and prediction into one interactive application.
 
 ## 🔮 Future Improvements
 
 - Add more machine learning algorithms.
 - Implement automated hyperparameter tuning.
-- Add cross-validation for more reliable model evaluation.
-- Support additional evaluation metrics and visualizations.
+- Add cross-validation for more reliable evaluation.
 - Improve handling of missing values and imbalanced datasets.
-- Deploy the application online for public access.
+- Add more evaluation metrics and visualizations.
+- Deploy the application online.
 
 ## 👩‍💻 Author
 
@@ -173,4 +184,4 @@ GitHub: [@divyasingh97](https://github.com/divyasingh97)
 
 ---
 
-*This project was developed as a practical machine learning application to explore model training, evaluation, and deployment using Python and Streamlit.*
+*This project was developed as a practical machine learning application using Python, Scikit-learn, and Streamlit.*
